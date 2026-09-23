@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     openai_base_url: str | None = None
+    ai_review_provider: str = "auto"  # "auto" | "openai" | "anthropic"
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./hiero_bot.db"

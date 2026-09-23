@@ -42,25 +42,51 @@ class AIReviewer:
         self._client = None
         self._client_type = "anthropic"
 
-    def _get_client(self):
+    def _get_client(self, cfg):
         if self._client is None:
-            if settings.openai_api_key:
-                import openai
+            provider = settings.ai_review_provider
+            openai_key = settings.openai_api_key
+            anthropic_key = settings.anthropic_api_key
 
+            if provider == "auto":
+                if openai_key and anthropic_key:
+                    log.warning(
+                        "Both OpenAI and Anthropic keys are configured. "
+                        "Defaulting to OpenAI. Set AI_REVIEW_PROVIDER to explicitly choose."
+                    )
+                
+                if openai_key:
+                    selected = "openai"
+                elif anthropic_key:
+                    selected = "anthropic"
+                else:
+                    raise RuntimeError("No AI API key configured")
+            elif provider == "openai":
+                if not openai_key:
+                    raise RuntimeError("AI_REVIEW_PROVIDER set to 'openai' but no OPENAI_API_KEY provided")
+                selected = "openai"
+            elif provider == "anthropic":
+                if not anthropic_key:
+                    raise RuntimeError("AI_REVIEW_PROVIDER set to 'anthropic' but no ANTHROPIC_API_KEY provided")
+                selected = "anthropic"
+            else:
+                raise ValueError(f"Invalid AI_REVIEW_PROVIDER: {provider}")
+
+            if selected == "openai":
+                import openai
                 self._client = openai.AsyncOpenAI(
-                    api_key=settings.openai_api_key,
+                    api_key=openai_key,
                     base_url=settings.openai_base_url,
                 )
-                self._client_type = "openai"
-            elif settings.anthropic_api_key:
-                import anthropic
-
-                self._client = anthropic.AsyncAnthropic(
-                    api_key=settings.anthropic_api_key
-                )
-                self._client_type = "anthropic"
             else:
-                raise RuntimeError("No AI API key configured")
+                import anthropic
+                self._client = anthropic.AsyncAnthropic(
+                    api_key=anthropic_key
+                )
+            
+            self._client_type = selected
+            log.info("AI reviewer using provider=%s model=%s", self._client_type, cfg.model)
+
         return self._client
 
     async def review(
@@ -76,7 +102,7 @@ class AIReviewer:
 
         prompt = self._build_prompt(pr_title, pr_body, diffs, file_contents or [], cfg)
         try:
-            client = self._get_client()
+            client = self._get_client(cfg)
 
             client_type = getattr(self, "_client_type", None)
             if client_type is None:
